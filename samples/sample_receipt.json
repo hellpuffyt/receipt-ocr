@@ -1,0 +1,32 @@
+{
+  "blocks": [
+    {"text": "GREENLEAF", "left": 40, "top": 10, "width": 140, "height": 22, "confidence": 96.0},
+    {"text": "MARKET", "left": 40, "top": 34, "width": 100, "height": 18, "confidence": 95.0},
+    {"text": "123 Baker Street", "left": 30, "top": 58, "width": 160, "height": 12, "confidence": 90.0},
+    {"text": "Springfield", "left": 30, "top": 72, "width": 90, "height": 12, "confidence": 88.0},
+    {"text": "Tel: 555-123-4567", "left": 30, "top": 86, "width": 140, "height": 12, "confidence": 85.0},
+    {"text": "Date:", "left": 30, "top": 106, "width": 45, "height": 12, "confidence": 92.0},
+    {"text": "14/03/2024", "left": 80, "top": 106, "width": 80, "height": 12, "confidence": 93.0},
+    {"text": "Receipt #4471", "left": 30, "top": 122, "width": 110, "height": 12, "confidence": 89.0},
+    {"text": "Organic Apples 2kg", "left": 30, "top": 150, "width": 170, "height": 12, "confidence": 91.0},
+    {"text": "$6.50", "left": 230, "top": 150, "width": 50, "height": 12, "confidence": 90.0},
+    {"text": "Sourdough Bread", "left": 30, "top": 166, "width": 150, "height": 12, "confidence": 90.0},
+    {"text": "$4.20", "left": 230, "top": 166, "width": 50, "height": 12, "confidence": 89.0},
+    {"text": "2", "left": 30, "top": 182, "width": 15, "height": 12, "confidence": 87.0},
+    {"text": "x", "left": 48, "top": 182, "width": 10, "height": 12, "confidence": 80.0},
+    {"text": "Free-range Eggs (12)", "left": 60, "top": 182, "width": 160, "height": 12, "confidence": 88.0},
+    {"text": "$5.00", "left": 230, "top": 182, "width": 50, "height": 12, "confidence": 90.0},
+    {"text": "$10.00", "left": 290, "top": 182, "width": 55, "height": 12, "confidence": 89.0},
+    {"text": "Olive Oil 1L", "left": 30, "top": 198, "width": 130, "height": 12, "confidence": 90.0},
+    {"text": "$89.99", "left": 230, "top": 198, "width": 55, "height": 12, "confidence": 91.0},
+    {"text": "Subtotal", "left": 30, "top": 224, "width": 80, "height": 12, "confidence": 93.0},
+    {"text": "$110.69", "left": 230, "top": 224, "width": 60, "height": 12, "confidence": 92.0},
+    {"text": "Sales Tax 8%", "left": 30, "top": 240, "width": 100, "height": 12, "confidence": 92.0},
+    {"text": "$8.86", "left": 230, "top": 240, "width": 50, "height": 12, "confidence": 91.0},
+    {"text": "TOTAL", "left": 30, "top": 260, "width": 70, "height": 16, "confidence": 97.0},
+    {"text": "$119.55", "left": 230, "top": 260, "width": 65, "height": 16, "confidence": 94.0},
+    {"text": "Cash Tendered", "left": 30, "top": 284, "width": 110, "height": 12, "confidence": 90.0},
+    {"text": "$50.00", "left": 230, "top": 284, "width": 55, "height": 12, "confidence": 88.0},
+    {"text": "Thank you for shopping with us!", "left": 30, "top": 310, "width": 220, "height": 12, "confidence": 82.0}
+  ]
+}
