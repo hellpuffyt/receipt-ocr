@@ -364,3 +364,22 @@ class TestNoisyOcr:
         low = fields.extract_total(low_conf_blocks, _lines(low_conf_blocks))
         assert high is not None and low is not None
         assert low.confidence < high.confidence
+
+
+def test_a_discount_line_is_not_a_positive_line_item() -> None:
+    from receipt_ocr.engine import extract_fields
+    from tests.conftest import make_blocks
+
+    rows = [
+        ("SHOP", 30, 10),
+        ("Bread", 30, 100),
+        ("$4.00", 200, 100),
+        ("Coupon", 30, 120),
+        ("-$1.00", 200, 120),
+        ("TOTAL", 30, 160),
+        ("$3.00", 200, 160),
+    ]
+    result = extract_fields(make_blocks(rows))
+    items = result.fields["line_items"].value
+    assert [str(i.amount) for i in items] == ["4.00"]
+    assert str(result.fields["total"].value) == "3.00"

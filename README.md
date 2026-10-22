@@ -85,7 +85,11 @@ work with **zero native OCR dependencies**.
 
 ## Installation
 
+Not published on PyPI (the name `receipt-ocr` there is an unrelated project);
+install from a clone:
+
 ```bash
+git clone https://github.com/hellpuffyt/receipt-ocr && cd receipt-ocr
 python -m venv .venv
 ./.venv/Scripts/python.exe -m pip install -e ".[dev]"     # Windows
 # or
@@ -96,7 +100,7 @@ To use `TesseractBackend` against real images, additionally install the
 `ocr` extra and the system Tesseract binary:
 
 ```bash
-pip install "receipt-ocr[ocr]"
+pip install -e ".[ocr]"    # from this checkout; the PyPI name belongs to another project
 # then install the tesseract binary for your OS, e.g.:
 #   macOS:   brew install tesseract
 #   Ubuntu:  apt-get install tesseract-ocr
@@ -169,7 +173,20 @@ hard cases: a receipt where the largest number on the page is not the
 total, ambiguous DD/MM vs MM/DD dates, a missing tax line, multiple
 currencies, and noisy/low-confidence OCR text.
 
+## Verification status
+
+- The extraction engine (money, dates, layout, fields) is verified by the test
+  suite on synthetic OCR blocks and by the bundled sample, whose numbers are
+  internally consistent (line items 110.69 + tax 8.86 = total 119.55).
+- **The Tesseract path is not verified.** It was not run during the audit of
+  this version: the `tesseract` binary was not installed on the audit machine
+  and no real receipt images are bundled. Accuracy on real photos is unknown.
+
 ## Limitations
+
+- Negative amounts: `-5.00`, `$-5.00` and `-$5.00` are negative and are ignored
+  as totals and line items (discounts/refunds are not modelled). Accounting
+  parentheses such as `(12.00)` are read as positive.
 
 Be realistic about what this tool can and can't do:
 

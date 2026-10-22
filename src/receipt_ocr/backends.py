@@ -95,7 +95,7 @@ class TesseractBackend:
         except ImportError as exc:  # pragma: no cover - exercised only without extras
             raise RuntimeError(
                 "TesseractBackend requires the 'ocr' extra: "
-                "install with `pip install receipt-ocr[ocr]`, and make sure the "
+                "install it from your checkout with `pip install -e '.[ocr]'`, and make sure the "
                 "tesseract binary is installed on your system "
                 "(https://tesseract-ocr.github.io/tessdoc/Installation.html)."
             ) from exc
@@ -109,7 +109,7 @@ class TesseractBackend:
         except ImportError as exc:
             raise RuntimeError(
                 "TesseractBackend requires the 'ocr' extra: "
-                "install with `pip install receipt-ocr[ocr]`."
+                "install it from your checkout with `pip install -e '.[ocr]'`."
             ) from exc
 
         if self.tesseract_cmd:

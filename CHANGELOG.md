@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- A minus sign before a currency symbol (`-$2.00`, `-€1,50`) was dropped, so a
+  discount line became a positive line item, while `-2.00` was negative.
+- `--backend tesseract` without the `ocr` extra raised an uncaught
+  `RuntimeError` traceback instead of an error message (exit 2).
+- Install hints said `pip install receipt-ocr[ocr]`, which fetches an unrelated
+  PyPI package of the same name; they now point at the local checkout.
+
+### Added
+
+- README "Verification status" (Tesseract path unverified), negative-amount
+  limitation, `SECURITY.md`, `.editorconfig`, `docs/PRODUCTION_READINESS.md`.
+
 ## [0.1.0] - 2026-08-30
 
 ### Added
