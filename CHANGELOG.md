@@ -15,9 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Install hints said `pip install receipt-ocr[ocr]`, which fetches an unrelated
   PyPI package of the same name; they now point at the local checkout.
 
+- With real (word-level) Tesseract output, dates written as several words
+  (`14 Mar 2024`, `March 14, 2024`) were never found, because dates were only
+  parsed per block. Whole lines are now also tried.
+- Line-item descriptions kept anything right of the price when it was a
+  separate block (`Espresso 2,80 EUR`); the description is now the text left
+  of the price.
+
 ### Added
 
-- README "Verification status" (Tesseract path unverified), negative-amount
+- `tests/test_tesseract_integration.py`: synthetic receipts rendered at test
+  time and run through the real Tesseract binary (skipped when it is absent).
+- README "Verification status", negative-amount
   limitation, `SECURITY.md`, `.editorconfig`, `docs/PRODUCTION_READINESS.md`.
 
 ## [0.1.0] - 2026-08-30

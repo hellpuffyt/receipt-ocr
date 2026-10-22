@@ -178,9 +178,17 @@ currencies, and noisy/low-confidence OCR text.
 - The extraction engine (money, dates, layout, fields) is verified by the test
   suite on synthetic OCR blocks and by the bundled sample, whose numbers are
   internally consistent (line items 110.69 + tax 8.86 = total 119.55).
-- **The Tesseract path is not verified.** It was not run during the audit of
-  this version: the `tesseract` binary was not installed on the audit machine
-  and no real receipt images are bundled. Accuracy on real photos is unknown.
+- The Tesseract path is verified end to end by
+  `tests/test_tesseract_integration.py`: three receipts (USD with an ISO date,
+  EUR with `1.234,50` amounts and a DD/MM date, GBP with a month-name date) are
+  drawn at test time with Pillow's bundled font, OCR'd by the real `tesseract`
+  binary (English data only), and every field is asserted. Those tests are
+  **skipped** (not passed) unless the `ocr` extra and `tesseract` are
+  installed; run them with `pytest tests/test_tesseract_integration.py -rs`.
+- Not verified: photographs or scans of real receipts (skew, glare, thermal
+  paper), other fonts, and non-English Tesseract language data. In testing,
+  Pillow's bundled font made eng Tesseract misread `£` as `k`/`X`/`&`, so the
+  GBP fixture uses the `GBP` code.
 
 ## Limitations
 
