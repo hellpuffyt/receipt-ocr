@@ -55,6 +55,22 @@ class TestExtractTotal:
         assert result.value == Decimal("15.00")
         assert result.confidence < 0.4  # honestly low confidence for the guess
 
+    def test_fallback_does_not_read_a_date_as_the_largest_amount(self) -> None:
+        # Tesseract can drop right-aligned prices next to keywords; the
+        # fallback then must not offer the year of a date as the total.
+        blocks = [
+            make_block("2025-07-09", 10, 80, index=0),
+            make_block("14.08.2025", 10, 90, index=1),
+            make_block("Brot", 10, 100, index=2),
+            make_block("3,49", 200, 100, index=3),
+            make_block("Summe", 10, 120, index=4),
+            make_block("15,99", 200, 120, index=5),
+        ]
+        result = fields.extract_total(blocks, _lines(blocks))
+        assert result is not None
+        assert result.value == Decimal("15.99")
+        assert result.confidence < 0.4
+
     def test_returns_none_when_no_amounts_at_all(self) -> None:
         blocks = [make_block("Thank you for visiting", 10, 100, index=0)]
         result = fields.extract_total(blocks, _lines(blocks))
@@ -87,6 +103,23 @@ class TestExtractTotal:
 
 
 class TestExtractTax:
+    def test_rate_percentage_is_not_the_tax_amount(self) -> None:
+        # OCR kept "VAT 20%" but dropped the price on that row.
+        blocks = [
+            make_block("VAT 20%", 10, 100, index=0),
+            make_block("Paid by card", 10, 140, index=1),
+        ]
+        assert fields.extract_tax(blocks, _lines(blocks)) is None
+
+    def test_rate_and_amount_on_one_line_yields_the_amount(self) -> None:
+        blocks = [
+            make_block("VAT 20%", 10, 100, index=0),
+            make_block("3.00", 200, 100, index=1),
+        ]
+        result = fields.extract_tax(blocks, _lines(blocks))
+        assert result is not None
+        assert result.value == Decimal("3.00")
+
     def test_finds_tax_by_keyword(self) -> None:
         blocks = [
             make_block("Sales Tax", 10, 100, index=0),

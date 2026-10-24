@@ -180,6 +180,16 @@ def _find_keyword_amount(
     return FieldResult(name=field_name, value=value, confidence=confidence, evidence=evidence)
 
 
+def _without_dates(text: str) -> str:
+    """Blank out every date in ``text`` so its digits are not read as money."""
+    for _ in range(8):
+        parsed = parse_date(text)
+        if parsed is None or parsed.raw not in text:
+            break
+        text = text.replace(parsed.raw, " ", 1)
+    return text
+
+
 def extract_total(blocks: list[TextBlock], lines: list[Line]) -> FieldResult | None:
     result = _find_keyword_amount(
         blocks, lines, TOTAL_STRONG, TOTAL_WEAK, TOTAL_EXCLUDE_PHRASES, "total"
@@ -189,9 +199,11 @@ def extract_total(blocks: list[TextBlock], lines: list[Line]) -> FieldResult | N
 
     # Fallback: no keyword found at all. Use the largest amount on the page,
     # but with a low confidence since this is a weak heuristic.
+    # Date components are not amounts: "2025-07-09" would otherwise offer
+    # 2025 as the "largest amount" and win over the real figures.
     all_amounts: list[tuple[Decimal, TextBlock]] = []
     for b in blocks:
-        for _raw, value in find_amounts(b.text):
+        for _raw, value in find_amounts(_without_dates(b.text)):
             if value >= 0:
                 all_amounts.append((value, b))
     if not all_amounts:
