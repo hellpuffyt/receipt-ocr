@@ -160,6 +160,10 @@ def find_amounts(text: str) -> list[tuple[str, Decimal]]:
         raw = m.group(0)
         if not re.search(r"\d", raw):
             continue
+        if text[m.end() :].lstrip().startswith("%"):
+            # "VAT 20%" is a rate, not an amount; reading it as money made a
+            # tax line with no price report the rate as the tax.
+            continue
         value = normalize_number(raw)
         if value is None:
             continue
