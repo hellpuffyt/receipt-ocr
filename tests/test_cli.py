@@ -1,5 +1,8 @@
+import importlib.util
 import json
 from pathlib import Path
+
+import pytest
 
 from receipt_ocr.cli import build_parser, run
 
@@ -55,3 +58,14 @@ class TestCliRun:
 
         with pytest.raises(SystemExit):
             build_parser().parse_args([str(SAMPLE), "--backend", "nonsense"])
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("pytesseract") is not None,
+    reason="the 'ocr' extra is installed, so the missing-dependency path cannot occur",
+)
+def test_tesseract_backend_without_extras_is_an_error_message(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    # Constructing the backend raised RuntimeError outside the CLI's handler.
+    code = run([str(tmp_path / "receipt.jpg"), "--backend", "tesseract"])
+    assert code == 2
+    assert "ocr" in capsys.readouterr().err

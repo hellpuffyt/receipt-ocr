@@ -163,8 +163,16 @@ def find_amounts(text: str) -> list[tuple[str, Decimal]]:
         value = normalize_number(raw)
         if value is None:
             continue
+        if value > 0 and _NEGATIVE_BEFORE_SYMBOL_RE.search(text[: m.start()]):
+            # "-$2.00" / "-€1,50": the minus sits before the currency symbol,
+            # outside the number token. Dropping it turned discounts and
+            # refunds into positive amounts, while "-2.00" stayed negative.
+            value = -value
         results.append((raw, value))
     return results
+
+
+_NEGATIVE_BEFORE_SYMBOL_RE = re.compile(r"(?<![A-Za-z0-9])-(?:US\$|R\$|[$€£¥₹₩₽₱₺])\s?$")
 
 
 def find_currency(text: str) -> str | None:

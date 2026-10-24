@@ -124,3 +124,19 @@ class TestFindCurrency:
 
     def test_case_insensitive_symbol_token(self) -> None:
         assert find_currency("CHF 42.10") == "CHF"
+
+
+# --- audit regressions ------------------------------------------------------
+
+
+def test_minus_before_a_currency_symbol_is_a_negative_amount() -> None:
+    # "-5.00" was negative but "-$5.00" / "-€1,50" lost the sign, so a
+    # discount line became a positive amount.
+    assert find_amounts("Coupon -$2.00") == [("2.00", Decimal("-2.00"))]
+    assert find_amounts("-€1,50") == [("1,50", Decimal("-1.50"))]
+    assert find_amounts("-5.00") == [("-5.00", Decimal("-5.00"))]
+
+
+def test_a_spaced_dash_is_a_separator_not_a_sign() -> None:
+    assert find_amounts("Item - $3.00") == [("3.00", Decimal("3.00"))]
+    assert find_amounts("A-$1.00") == [("1.00", Decimal("1.00"))]

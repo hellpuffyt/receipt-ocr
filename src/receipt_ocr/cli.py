@@ -69,8 +69,10 @@ def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    backend = _build_backend(args.backend)
     try:
+        # Constructing the Tesseract backend raises RuntimeError when the
+        # optional dependencies are missing; report it like any other error.
+        backend = _build_backend(args.backend)
         blocks = backend.extract(args.input)
     except FileNotFoundError:
         print(f"error: input file not found: {args.input}", file=sys.stderr)

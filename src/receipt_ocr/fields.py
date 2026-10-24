@@ -214,25 +214,36 @@ def extract_tax(blocks: list[TextBlock], lines: list[Line]) -> FieldResult | Non
 # --------------------------------------------------------------------------
 
 
-def extract_date(blocks: list[TextBlock], locale_currency: str | None) -> FieldResult | None:
-    best: tuple[float, TextBlock, ParsedDate] | None = None
-    for b in blocks:
-        parsed = parse_date(b.text, locale_currency=locale_currency)
+def extract_date(
+    blocks: list[TextBlock],
+    locale_currency: str | None,
+    lines: list[Line] | None = None,
+) -> FieldResult | None:
+    # Candidates are single blocks and, because word-level OCR (Tesseract)
+    # splits "14 Mar 2024" into three blocks, the joined text of each line.
+    candidates: list[tuple[str, tuple[TextBlock, ...]]] = [(b.text, (b,)) for b in blocks]
+    for line in lines or []:
+        if len(line.blocks) > 1:
+            candidates.append((line.text, tuple(line.blocks)))
+
+    best: tuple[float, str, tuple[TextBlock, ...], ParsedDate] | None = None
+    for text, source_blocks in candidates:
+        parsed = parse_date(text, locale_currency=locale_currency)
         if parsed is None:
             continue
-        conf_factor = b.confidence / 100.0
+        conf_factor = min(b.confidence for b in source_blocks) / 100.0
         ambiguity_penalty = 0.2 if parsed.ambiguous else 0.0
         score = 0.7 + 0.3 * conf_factor - ambiguity_penalty
         if best is None or score > best[0]:
-            best = (score, b, parsed)
+            best = (score, text, source_blocks, parsed)
 
     if best is None:
         return None
-    score, block, parsed = best
+    score, text, source_blocks, parsed = best
     confidence = max(0.0, min(1.0, score))
     evidence = Evidence(
-        text=block.text,
-        blocks=(block.index,),
+        text=text,
+        blocks=tuple(b.index for b in source_blocks),
         reason=(
             "ambiguous day/month order; used locale default"
             if parsed.ambiguous
@@ -387,12 +398,18 @@ def extract_line_items(blocks: list[TextBlock], lines: list[Line]) -> FieldResul
         if len(amounts_by_position) >= 2 and quantity is not None:
             unit_price = amounts_by_position[1][0]
 
-        description = text
-        # Strip the trailing price token(s) from the description for
-        # readability; keep it simple and robust to OCR noise.
-        price_text = price_block.text.strip()
-        if description.endswith(price_text):
-            description = description[: -len(price_text)].strip()
+        # The description is what sits left of the price. Word-level OCR
+        # gives "Espresso | 2,80 | EUR" as separate blocks, and stripping
+        # only a trailing price token left "Espresso 2,80 EUR".
+        ordered = sorted(line.blocks, key=lambda b: b.left)
+        left_blocks = [b for b in ordered if b.left < price_block.left]
+        if left_blocks:
+            description = " ".join(b.text for b in left_blocks).strip()
+        else:
+            description = text
+            price_text = price_block.text.strip()
+            if description.endswith(price_text):
+                description = description[: -len(price_text)].strip()
         if not description:
             description = text
 

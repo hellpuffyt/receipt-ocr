@@ -27,7 +27,7 @@ def extract_fields(blocks: list[TextBlock], source: str = "") -> ExtractionResul
     if vendor_result is not None:
         results["vendor"] = vendor_result
 
-    date_result = fields.extract_date(blocks, locale_currency=currency_code)
+    date_result = fields.extract_date(blocks, locale_currency=currency_code, lines=lines)
     if date_result is not None:
         results["date"] = date_result
 

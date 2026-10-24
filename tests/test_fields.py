@@ -364,3 +364,53 @@ class TestNoisyOcr:
         low = fields.extract_total(low_conf_blocks, _lines(low_conf_blocks))
         assert high is not None and low is not None
         assert low.confidence < high.confidence
+
+
+def test_a_discount_line_is_not_a_positive_line_item() -> None:
+    from receipt_ocr.engine import extract_fields
+    from tests.conftest import make_blocks
+
+    rows = [
+        ("SHOP", 30, 10),
+        ("Bread", 30, 100),
+        ("$4.00", 200, 100),
+        ("Coupon", 30, 120),
+        ("-$1.00", 200, 120),
+        ("TOTAL", 30, 160),
+        ("$3.00", 200, 160),
+    ]
+    result = extract_fields(make_blocks(rows))
+    items = result.fields["line_items"].value
+    assert [str(i.amount) for i in items] == ["4.00"]
+    assert str(result.fields["total"].value) == "3.00"
+
+
+
+# --- audit regressions: word-level OCR (one block per word, as Tesseract) ---
+
+
+def test_a_date_split_across_word_blocks_is_found() -> None:
+    from receipt_ocr.engine import extract_fields
+    from tests.conftest import make_blocks
+
+    rows = [("SHOP", 30, 10), ("14", 30, 40), ("Mar", 60, 40), ("2024", 100, 40)]
+    result = extract_fields(make_blocks(rows))
+    assert str(result.fields["date"].value) == "2024-03-14"
+    assert result.fields["date"].evidence.blocks == (1, 2, 3)
+
+
+def test_line_item_description_stops_at_the_price_block() -> None:
+    from receipt_ocr.engine import extract_fields
+    from tests.conftest import make_blocks
+
+    rows = [
+        ("SHOP", 30, 10),
+        ("Espresso", 30, 100),
+        ("2,80", 300, 100),
+        ("EUR", 360, 100),
+        ("TOTAL", 30, 140),
+        ("2,80", 300, 140),
+        ("EUR", 360, 140),
+    ]
+    items = extract_fields(make_blocks(rows)).fields["line_items"].value
+    assert [(i.description, str(i.amount)) for i in items] == [("Espresso", "2.80")]
