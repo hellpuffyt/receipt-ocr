@@ -4,11 +4,34 @@ Extract `total`, `date`, `vendor`, `tax`, `currency` and `line_items` from
 receipt and invoice OCR output, with a confidence score and evidence for every
 field, so a person only reviews the fields the tool is unsure about.
 
-<img src="docs/assets/overview.svg" width="100%" alt="Pipeline diagram: an image goes through TesseractBackend or a JSON file through JsonBackend, both produce TextBlock objects, layout.py groups them into lines, the extractors in fields.py (with money.py and dates.py) produce each field, and the result carries value, confidence and evidence plus a review queue of fields below --min-confidence.">
-
 **Status:** version 0.1.0, not published to PyPI. The extraction engine is
 covered by synthetic test fixtures and by a real Tesseract integration test on
 rendered receipts. It has not been tested on photographed or scanned receipts.
+
+## Demo
+
+<img src="docs/screenshots/sample-receipt-extraction.png" width="100%" alt="Terminal capture: receipt-ocr extracts USD, GREENLEAF MARKET, 2024-03-14, total 119.55 and tax 8.86 with confidences from the bundled sample, lists four line items, and puts total (confidence 0.7474) in the review queue at --min-confidence 0.8.">
+
+Real terminal capture of the bundled synthetic sample, run from a clone with
+the virtualenv active. At `--min-confidence 0.8` the total (0.7474) is sent to
+the review queue:
+
+```console
+$ receipt-ocr samples/sample_receipt.json --min-confidence 0.8 -o out.json
+$ jq -r '.fields | to_entries[] | select(.key != "line_items") | "\(.key)  \(.value.value)  \(.value.confidence)"' out.json
+currency  USD  0.9522
+vendor  GREENLEAF MARKET  0.9775
+date  2024-03-14  0.979
+total  119.55  0.7474
+tax  8.86  0.9243
+$ jq -c '.fields.line_items.value[] | {description, amount}' out.json
+{"description":"Organic Apples 2kg","amount":"6.50"}
+{"description":"Sourdough Bread","amount":"4.20"}
+{"description":"2 x Free-range Eggs (12) $5.00","amount":"10.00"}
+{"description":"Olive Oil 1L","amount":"89.99"}
+$ jq -c '.review_queue' out.json
+["total"]
+```
 
 ## What it does
 
@@ -162,6 +185,10 @@ print(result.review_queue(min_confidence=0.8))       # ['total']
 ```
 
 ## How it is built
+
+Diagram of the extraction pipeline (drawn from the source, not a screenshot):
+
+<img src="docs/assets/overview.svg" width="100%" alt="Pipeline diagram: an image goes through TesseractBackend or a JSON file through JsonBackend, both produce TextBlock objects, layout.py groups them into lines, the extractors in fields.py (with money.py and dates.py) produce each field, and the result carries value, confidence and evidence plus a review queue of fields below --min-confidence.">
 
 `receipt_ocr.backends.OcrBackend` is a `typing.Protocol` with one method,
 `extract(image_path) -> list[TextBlock]`.
