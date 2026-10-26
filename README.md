@@ -1,107 +1,97 @@
 # receipt-ocr
 
-Extract structured fields — `total`, `date`, `vendor`, `tax`, `currency`,
-`line_items` — from receipt and invoice images, with an honest confidence
-score per field so a human only has to review the fields the tool is
-actually unsure about.
+Extract `total`, `date`, `vendor`, `tax`, `currency` and `line_items` from
+receipt and invoice OCR output, with a confidence score and evidence for every
+field, so a person only reviews the fields the tool is unsure about.
 
-## What
+**Status:** version 0.1.0, not published to PyPI. The extraction engine is
+covered by synthetic test fixtures and by a real Tesseract integration test on
+rendered receipts. It has not been tested on photographed or scanned receipts.
 
-Generic OCR gives you a wall of text with per-word bounding boxes. It does
-not tell you which number is the total, whether `03/04/2024` means March
-4th or April 3rd, or which line at the top is the vendor's name. `receipt-ocr`
-takes OCR output (from Tesseract, or from a pre-extracted JSON file) and
-applies layout- and pattern-aware heuristics to pull out the fields
-bookkeeping actually needs, each with a 0-1 confidence score and a pointer
-back to the OCR block(s) it came from.
+## Demo
 
-## Why
+<img src="docs/screenshots/sample-receipt-extraction.png" width="100%" alt="Terminal capture: receipt-ocr extracts USD, GREENLEAF MARKET, 2024-03-14, total 119.55 and tax 8.86 with confidences from the bundled sample, lists four line items, and puts total (confidence 0.7474) in the review queue at --min-confidence 0.8.">
 
-Blind trust in OCR output is a bad idea for financial data - handwriting-grade
-noise, currency ambiguity, and locale-dependent date/number formats are all
-common in real receipts. Rather than pretending every extracted field is
-equally reliable, this tool scores each one and produces a **review queue**
-of only the fields below a confidence threshold, so a human reviewer's time
-goes where it's actually needed.
+Real terminal capture of the bundled synthetic sample, run from a clone with
+the virtualenv active. At `--min-confidence 0.8` the total (0.7474) is sent to
+the review queue:
 
-## Features
-
-- **Total**: found via keyword proximity (`total`, `amount due`, `balance
-  due`, ...) and position on the page — not simply "the largest number on
-  the receipt" (which is often a single expensive line item, not the total).
-- **Date**: supports ISO (`2024-03-14`), numeric (`14/03/2024`,
-  `03/14/2024`), and month-name (`14 Mar 2024`, `March 14, 2024`) formats.
-  When a numeric date is genuinely ambiguous (both components ≤ 12), it is
-  disambiguated using a locale hint derived from the detected currency, and
-  the resulting confidence is honestly lowered to reflect the guess.
-- **Vendor**: top-of-receipt heuristic using font size (block height) and
-  position, filtering out addresses, phone numbers, and generic headers
-  like "RECEIPT" or "INVOICE".
-- **Tax / VAT**: keyword-based (`tax`, `vat`, `gst`, `hst`, `pst`, ...),
-  separate from `total`, and not confused with "Tax Invoice" or "VAT No."
-  labels that aren't amounts.
-- **Currency**: detected from symbols (`$`, `€`, `£`, `¥`, `₹`, ...) and ISO
-  codes (`USD`, `EUR`, ...) anywhere on the receipt, by majority vote.
-- **Line items**: rows with a trailing amount, excluding totals/tax/subtotal/
-  footer noise, with best-effort quantity and unit-price detection for rows
-  like `2 x Free-range Eggs (12)  $5.00  $10.00`.
-- **Locale-aware money parsing**: `1,234.56`, `1.234,56`, and `1 234,56` are
-  all parsed correctly without assuming a US locale; a heuristic flags and
-  down-weights genuinely ambiguous amounts like `1,234` (thousands grouping
-  vs. an unusual 3-decimal currency).
-- **Confidence per field**, combining OCR block confidence, keyword/pattern
-  strength, and positional evidence — plus a `--min-confidence` gate that
-  produces a **review queue** of only the uncertain fields.
-
-## Architecture
-
-```
-Image ──▶ OcrBackend.extract() ──▶ list[TextBlock] ──▶ engine.extract_fields() ──▶ ExtractionResult
-          (Tesseract or JSON)       (text + bbox +       (pure, OCR-agnostic)      (value + confidence
-                                      OCR confidence)                               + evidence per field)
+```console
+$ receipt-ocr samples/sample_receipt.json --min-confidence 0.8 -o out.json
+$ jq -r '.fields | to_entries[] | select(.key != "line_items") | "\(.key)  \(.value.value)  \(.value.confidence)"' out.json
+currency  USD  0.9522
+vendor  GREENLEAF MARKET  0.9775
+date  2024-03-14  0.979
+total  119.55  0.7474
+tax  8.86  0.9243
+$ jq -c '.fields.line_items.value[] | {description, amount}' out.json
+{"description":"Organic Apples 2kg","amount":"6.50"}
+{"description":"Sourdough Bread","amount":"4.20"}
+{"description":"2 x Free-range Eggs (12) $5.00","amount":"10.00"}
+{"description":"Olive Oil 1L","amount":"89.99"}
+$ jq -c '.review_queue' out.json
+["total"]
 ```
 
-The field-extraction engine (`receipt_ocr.engine`, `receipt_ocr.fields`,
-`receipt_ocr.money`, `receipt_ocr.dates`, `receipt_ocr.layout`) never
-imports an OCR library. It operates entirely on `TextBlock` objects
-(text + bounding box + confidence), which makes it deterministic and fully
-testable with synthetic fixtures, independent of whatever OCR engine
-produced them.
+## What it does
 
-## Backends
+Generic OCR gives you a wall of text with per-word bounding boxes. It does not
+tell you which number is the total, whether `03/04/2024` means March 4th or
+April 3rd, or which line at the top is the vendor. `receipt-ocr` takes OCR
+output (from Tesseract, or from a pre-extracted JSON file) and applies layout
+and pattern heuristics to pull out the fields bookkeeping needs. Each field
+comes back with a 0 to 1 confidence score and a pointer to the OCR blocks it
+was read from.
 
-`receipt_ocr.backends.OcrBackend` is a `typing.Protocol` with one method:
-`extract(image_path) -> list[TextBlock]`.
+Financial data is a bad place to trust OCR blindly: noisy text, currency
+ambiguity and locale-dependent date and number formats are common. Instead of
+treating every field as equally reliable, the CLI produces a **review queue**
+of the fields that fall below a confidence threshold.
 
-| Backend | Native dependencies | Use case |
-|---|---|---|
-| `JsonBackend` | None | Pre-extracted OCR output (any OCR engine, or synthetic test fixtures). **This is what CI and the test suite use.** |
-| `TesseractBackend` | `pytesseract` + `Pillow` (Python) and the system `tesseract` binary | Real images, when Tesseract is installed. |
+## Fields
 
-`TesseractBackend` uses an optional import: it raises a clear `RuntimeError`
-if `pytesseract`/`Pillow` aren't installed, rather than failing at import
-time. The package, its CLI's JSON-backend path, and its entire test suite
-work with **zero native OCR dependencies**.
+- **Total**: found by keyword proximity (`total`, `amount due`, `balance due`,
+  ...) and position, not by picking the largest number on the page (which is
+  often an expensive line item).
+- **Date**: ISO (`2024-03-14`), numeric (`14/03/2024`, `03/14/2024`) and month
+  name (`14 Mar 2024`, `March 14, 2024`). When a numeric date is ambiguous
+  (both parts 12 or less) it is resolved with a locale hint from the detected
+  currency (USD means MM/DD, anything else DD/MM) and the confidence is lowered.
+- **Vendor**: a top-of-receipt heuristic using block height and position. It
+  skips addresses, phone numbers and headers such as "RECEIPT" or "INVOICE".
+- **Tax / VAT**: keywords `tax`, `vat`, `gst`, `hst`, `pst` and similar, kept
+  separate from the total and not confused with labels like "Tax Invoice" or
+  "VAT No.".
+- **Currency**: symbols (`$`, `€`, `£`, `¥`, `₹`, ...) and ISO codes (`USD`,
+  `EUR`, ...) anywhere on the receipt, decided by majority vote.
+- **Line items**: rows ending in an amount, excluding total, tax, subtotal and
+  footer lines. Quantity and unit price are filled in for rows like
+  `2 x Free-range Eggs (12)  $5.00  $10.00`.
+- **Money parsing**: `1,234.56`, `1.234,56` and `1 234,56` all parse without
+  assuming a US locale. Ambiguous amounts such as `1,234` are flagged and
+  down-weighted.
 
-## Installation
+A field that cannot be found is left out of `fields` rather than returned
+empty. `line_items` is always present.
 
-Not published on PyPI (the name `receipt-ocr` there is an unrelated project);
-install from a clone:
+## Install
+
+Python 3.10 or newer. The core has no runtime dependencies. The name
+`receipt-ocr` on PyPI belongs to an unrelated project, so install from a clone:
 
 ```bash
 git clone https://github.com/hellpuffyt/receipt-ocr && cd receipt-ocr
 python -m venv .venv
-./.venv/Scripts/python.exe -m pip install -e ".[dev]"     # Windows
-# or
 .venv/bin/python -m pip install -e ".[dev]"                # macOS/Linux
+./.venv/Scripts/python.exe -m pip install -e ".[dev]"     # Windows
 ```
 
-To use `TesseractBackend` against real images, additionally install the
-`ocr` extra and the system Tesseract binary:
+To read real images with `TesseractBackend`, also install the `ocr` extra
+(`pytesseract` and `Pillow`) and the Tesseract binary:
 
 ```bash
-pip install -e ".[ocr]"    # from this checkout; the PyPI name belongs to another project
-# then install the tesseract binary for your OS, e.g.:
+.venv/bin/python -m pip install -e ".[ocr]"
+# then the tesseract binary for your OS:
 #   macOS:   brew install tesseract
 #   Ubuntu:  apt-get install tesseract-ocr
 #   Windows: https://github.com/UB-Mannheim/tesseract/wiki
@@ -109,15 +99,78 @@ pip install -e ".[ocr]"    # from this checkout; the PyPI name belongs to anothe
 
 ## Usage
 
+Activate the virtualenv (or call `.venv/bin/receipt-ocr`), then:
+
 ```bash
-# JSON backend (no native dependencies):
+# JSON backend, no native dependencies
 receipt-ocr samples/sample_receipt.json --min-confidence 0.6
 
-# Tesseract backend, against a real image (requires the ocr extra + tesseract binary):
+# Tesseract backend against an image (needs the ocr extra and the tesseract binary)
 receipt-ocr path/to/receipt.jpg --backend tesseract
 ```
 
-As a library:
+| Option | Default | Meaning |
+|---|---|---|
+| `input` | | OCR JSON file, or an image with `--backend tesseract` |
+| `--backend {json,tesseract}` | `json` | Which OCR backend reads the input |
+| `--min-confidence FLOAT` | `0.6` | Fields below this go into `review_queue` |
+| `--indent INT` | `2` | JSON indentation of the output |
+| `-o, --output PATH` | stdout | Write the JSON to a file |
+
+Exit codes: `0` on success, `2` when the input file is missing, the JSON is
+malformed, or the Tesseract backend's dependencies are not installed. The
+error message on stderr says which.
+
+### Input format
+
+`JsonBackend` reads a JSON array of OCR blocks. Coordinates are pixels from
+the top left, and `confidence` is 0 to 100, as Tesseract reports it:
+
+```json
+{"text": "TOTAL", "left": 30, "top": 260, "width": 70, "height": 16, "confidence": 97.0}
+```
+
+### Output
+
+`receipt-ocr samples/sample_receipt.json` prints (evidence and line items
+abridged):
+
+```json
+{
+  "source": "samples/sample_receipt.json",
+  "fields": {
+    "currency": { "value": "USD", "confidence": 0.9522, "evidence": { "...": "..." } },
+    "vendor": {
+      "value": "GREENLEAF MARKET",
+      "confidence": 0.9775,
+      "evidence": {
+        "text": "GREENLEAF MARKET",
+        "blocks": [0, 1],
+        "reason": "top-of-receipt heuristic (font size + position)"
+      }
+    },
+    "date": { "value": "2024-03-14", "confidence": 0.979, "evidence": { "...": "..." } },
+    "total": { "value": "119.55", "confidence": 0.7474, "evidence": { "...": "..." } },
+    "tax": { "value": "8.86", "confidence": 0.9243, "evidence": { "...": "..." } },
+    "line_items": {
+      "value": [
+        { "description": "Organic Apples 2kg", "amount": "6.50", "quantity": null, "unit_price": null },
+        { "description": "2 x Free-range Eggs (12) $5.00", "amount": "10.00", "quantity": "2", "unit_price": "5.00" },
+        "..."
+      ],
+      "confidence": 0.8932,
+      "evidence": { "...": "..." }
+    }
+  },
+  "review_queue": [],
+  "min_confidence": 0.6
+}
+```
+
+The sample is synthetic and internally consistent: line items 110.69 plus tax
+8.86 equals the total 119.55.
+
+### As a library
 
 ```python
 from receipt_ocr.backends import JsonBackend
@@ -126,36 +179,31 @@ from receipt_ocr.engine import extract_fields
 blocks = JsonBackend().extract("samples/sample_receipt.json")
 result = extract_fields(blocks, source="samples/sample_receipt.json")
 
-print(result.fields["total"].value)         # Decimal("119.55")
-print(result.fields["total"].confidence)    # e.g. 0.83
-print(result.review_queue(min_confidence=0.6))  # fields to have a human check
+print(repr(result.fields["total"].value))           # Decimal('119.55')
+print(result.fields["total"].confidence)             # 0.7473846153846153
+print(result.review_queue(min_confidence=0.8))       # ['total']
 ```
 
-## Examples
+## How it is built
 
-Input (`samples/sample_receipt.json`) is a JSON array of OCR blocks like:
+Diagram of the extraction pipeline (drawn from the source, not a screenshot):
 
-```json
-{"text": "TOTAL", "left": 30, "top": 260, "width": 70, "height": 16, "confidence": 97.0}
-```
+<img src="docs/assets/overview.svg" width="100%" alt="Pipeline diagram: an image goes through TesseractBackend or a JSON file through JsonBackend, both produce TextBlock objects, layout.py groups them into lines, the extractors in fields.py (with money.py and dates.py) produce each field, and the result carries value, confidence and evidence plus a review queue of fields below --min-confidence.">
 
-Running `receipt-ocr samples/sample_receipt.json` produces (abridged):
+`receipt_ocr.backends.OcrBackend` is a `typing.Protocol` with one method,
+`extract(image_path) -> list[TextBlock]`.
 
-```json
-{
-  "fields": {
-    "currency": { "value": "USD", "confidence": 0.95, "evidence": {"text": "$6.50", "..." : "..."} },
-    "vendor":   { "value": "GREENLEAF MARKET", "confidence": 0.98, "evidence": { "...": "..." } },
-    "date":     { "value": "2024-03-14", "confidence": 0.98, "evidence": { "...": "..." } },
-    "total":    { "value": "119.55", "confidence": 0.75, "evidence": { "...": "..." } },
-    "tax":      { "value": "8.86", "confidence": 0.92, "evidence": { "...": "..." } },
-    "line_items": { "value": [ { "description": "Organic Apples 2kg", "amount": "6.50" }, "..." ] }
-  },
-  "review_queue": []
-}
-```
+| Backend | Native dependencies | Use |
+|---|---|---|
+| `JsonBackend` | none | Pre-extracted OCR output from any engine, or test fixtures. CI and the test suite use this. |
+| `TesseractBackend` | `pytesseract`, `Pillow` and the `tesseract` binary | Real images. Raises a `RuntimeError` with an install hint if the extra is missing, instead of failing at import. |
 
-## Testing
+The extraction engine (`engine`, `fields`, `money`, `dates`, `layout`) never
+imports an OCR library. It works only on `TextBlock` objects (text, bounding
+box, confidence, page), which keeps it deterministic and testable with
+synthetic fixtures.
+
+## Tests
 
 ```bash
 pytest
@@ -163,75 +211,65 @@ ruff check .
 mypy
 ```
 
-All three are enforced in CI (`.github/workflows/ci.yml`) across Python
-3.10-3.13 on Ubuntu, Windows, and macOS, plus a dedicated lint/mypy job and
-a CLI smoke-test job that runs the JSON backend end to end — no Tesseract
-install anywhere in CI.
+CI (`.github/workflows/ci.yml`) runs `pytest` on Python 3.10 to 3.13 across
+Ubuntu, Windows and macOS, `ruff` and strict `mypy` in a separate job, and a
+smoke job that runs the CLI on the sample and checks the total is `119.55`.
+CI does not install Tesseract.
 
-The test suite (`tests/`) uses synthetic `TextBlock` fixtures covering
-hard cases: a receipt where the largest number on the page is not the
-total, ambiguous DD/MM vs MM/DD dates, a missing tax line, multiple
-currencies, and noisy/low-confidence OCR text.
+The unit tests use synthetic `TextBlock` fixtures for the hard cases: a
+receipt where the largest number is not the total, ambiguous DD/MM and MM/DD
+dates, a missing tax line, several currencies, and noisy low-confidence text.
 
-## Verification status
+`tests/test_tesseract_integration.py` draws three receipts with Pillow's
+bundled font (USD with an ISO date, EUR with `1.234,50` amounts and a DD/MM
+date, GBP with a month-name date), runs them through the real `tesseract`
+binary with English data, and asserts every field. These tests are skipped
+unless the `ocr` extra and `tesseract` are installed. Run them with:
 
-- The extraction engine (money, dates, layout, fields) is verified by the test
-  suite on synthetic OCR blocks and by the bundled sample, whose numbers are
-  internally consistent (line items 110.69 + tax 8.86 = total 119.55).
-- The Tesseract path is verified end to end by
-  `tests/test_tesseract_integration.py`: three receipts (USD with an ISO date,
-  EUR with `1.234,50` amounts and a DD/MM date, GBP with a month-name date) are
-  drawn at test time with Pillow's bundled font, OCR'd by the real `tesseract`
-  binary (English data only), and every field is asserted. Those tests are
-  **skipped** (not passed) unless the `ocr` extra and `tesseract` are
-  installed; run them with `pytest tests/test_tesseract_integration.py -rs`.
-- Not verified: photographs or scans of real receipts (skew, glare, thermal
-  paper), other fonts, and non-English Tesseract language data. In testing,
-  Pillow's bundled font made eng Tesseract misread `£` as `k`/`X`/`&`, so the
-  GBP fixture uses the `GBP` code.
+```bash
+pytest tests/test_tesseract_integration.py -rs
+```
+
+Pillow's bundled font made English Tesseract misread `£` as `k`, `X` or `&`,
+so the GBP fixture uses the `GBP` code.
 
 ## Limitations
 
-- Negative amounts: `-5.00`, `$-5.00` and `-$5.00` are negative and are ignored
-  as totals and line items (discounts/refunds are not modelled). Accounting
-  parentheses such as `(12.00)` are read as positive.
-
-Be realistic about what this tool can and can't do:
-
-- **Accuracy depends entirely on the OCR backend's output quality.** The
-  extraction engine can only be as good as the text blocks and bounding
-  boxes it receives. Skewed photos, glare, faded thermal-paper receipts,
-  and handwriting will degrade `TesseractBackend` output significantly, and
-  no amount of downstream heuristics fully compensates for that.
-  `JsonBackend` (which is what CI and this README's examples exercise) is
-  only as good as whatever produced its input JSON.
-- The heuristics are tuned for typical Western-style itemized receipts and
-  invoices. Non-tabular or heavily stylized layouts (e.g. some restaurant
-  or multi-column invoices) may extract line items incorrectly.
-- Vendor detection is a font-size/position heuristic, not a business-name
-  database lookup - it can pick up a slogan or address line on unusual
-  layouts.
-- Date disambiguation, when genuinely ambiguous, falls back to a locale
-  guess based on detected currency (defaulting to DD/MM unless USD is
-  detected) - this is a heuristic, not certainty, and the field's
-  confidence is intentionally lowered to reflect that.
-- This tool does not do any image preprocessing (deskew, denoise, binarize)
-  itself; that is left to the OCR backend.
-- Multi-page receipts are represented via `TextBlock.page`, but the
-  extractors currently treat all blocks as one logical document — per-page
-  handling is a possible future enhancement.
+- Accuracy depends on the OCR output. Skewed photos, glare, faded thermal
+  paper and handwriting degrade Tesseract results, and no downstream heuristic
+  fully makes up for that. The tool does no image preprocessing (deskew,
+  denoise, binarize).
+- Vendor detection is a size and position heuristic, not a lookup. On unusual
+  layouts it can pick a slogan or address. When the vendor is printed in the
+  same font as the body it can also pick an item line with high confidence: on
+  a rendered test receipt with uniform text it returned `Bagel 3.25`
+  (confidence 0.98) instead of `CORNER CAFE`. Check the vendor's evidence.
+- The heuristics are tuned for Western-style itemized receipts and invoices.
+  Multi-column or heavily stylized layouts can produce wrong line items.
+- Ambiguous numeric dates fall back to a currency-based guess, with lowered
+  confidence.
+- Negative amounts (`-5.00`, `$-5.00`, `-$5.00`) are ignored as totals and
+  line items; discounts and refunds are not modelled. Accounting parentheses
+  such as `(12.00)` are read as positive.
+- Multi-page input is carried in `TextBlock.page`, but the extractors treat
+  all blocks as one document.
+- Not tested: real photos or scans, fonts other than Pillow's default, and
+  non-English Tesseract language data.
 
 ## Security
 
-- No network calls are made by this library or CLI.
-- `JsonBackend` parses input with the standard library `json` module (no
-  arbitrary code execution).
-- Do not commit real customer receipts/invoices containing PII to a public
-  repository; the bundled `samples/sample_receipt.json` is entirely
-  synthetic.
-- Report security issues by opening a private security advisory on GitHub
-  rather than a public issue.
+The library and CLI make no network calls, and `JsonBackend` uses the standard
+`json` module. The bundled sample is synthetic; don't commit real receipts
+with personal data to a public repository. Report vulnerabilities privately as
+described in [SECURITY.md](SECURITY.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Changes are listed in
+[CHANGELOG.md](CHANGELOG.md), and
+[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) records the last
+audit and what it verified.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
